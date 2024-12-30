@@ -4,7 +4,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 
-	"github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 /* LinePosition represents a position in a line range. Unlike the Gitlab struct, this does not contain LineCode with a sha1 of the filename */

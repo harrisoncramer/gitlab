@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/harrisoncramer/gitlab.nvim/cmd/app/git"
-	"github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 var errorFromGitlab = errors.New("some error from Gitlab")

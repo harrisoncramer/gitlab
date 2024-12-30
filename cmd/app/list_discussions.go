@@ -8,7 +8,7 @@ import (
 
 	"encoding/json"
 
-	"github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 func Contains[T comparable](elems []T, v T) bool {

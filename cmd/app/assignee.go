@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 type AssigneeUpdateRequest struct {

@@ -9,7 +9,7 @@ import (
 
 	"github.com/harrisoncramer/gitlab.nvim/cmd/app/git"
 	"github.com/hashicorp/go-retryablehttp"
-	"github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 type ProjectInfo struct {

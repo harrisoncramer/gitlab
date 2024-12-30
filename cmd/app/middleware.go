@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 type mw func(http.Handler) http.Handler
