@@ -17,6 +17,7 @@ M.run_job = function(endpoint, method, body, callback)
   -- This handler will handle all responses from the Go server. Anything with a successful
   -- status will call the callback (if it is supplied for the job). Otherwise, it will print out the
   -- success message or error message and details from the Go server.
+  local stderr = {}
   Job:new({
     command = "curl",
     args = args,
@@ -55,13 +56,20 @@ M.run_job = function(endpoint, method, body, callback)
         end
       end, 0)
     end,
-    on_stderr = function()
-      vim.defer_fn(function()
-        u.notify("Could not run command!", vim.log.levels.ERROR)
-      end, 0)
+    on_stderr = function(_, data)
+      if data then
+        table.insert(stderr, data)
+      end
     end,
-    on_exit = function(_, status)
+    on_exit = function(code, status)
       vim.defer_fn(function()
+        if #stderr ~= 0 then
+          u.notify(
+            string.format("Could not run command `%s %s`! Stderr was:", code.command, table.concat(code.args, " ")),
+            vim.log.levels.ERROR
+          )
+          vim.notify(string.format("%s", table.concat(stderr, "\n")), vim.log.levels.ERROR)
+        end
         if status ~= 0 then
           u.notify(string.format("Go server exited with non-zero code: %d", status), vim.log.levels.ERROR)
         end
