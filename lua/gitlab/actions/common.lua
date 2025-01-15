@@ -293,6 +293,13 @@ M.jump_to_file = function(tree)
     u.notify("This comment was not left on a particular location", vim.log.levels.WARN)
     return
   end
+  if vim.fn.filereadable(root_node.file_name) == 0 then
+    u.notify(
+      string.format("The file %s for which the comment was made doesn't exist in HEAD.", root_node.file_name),
+      vim.log.levels.WARN
+    )
+    return
+  end
   vim.cmd.tabnew()
   local line_number = get_new_line(root_node) or get_old_line(root_node)
   if line_number == nil then
