@@ -12,36 +12,67 @@ local M = {
   pipeline_popup = nil,
 }
 
-local function get_latest_pipeline()
-  local pipeline = state.PIPELINE and state.PIPELINE.latest_pipeline
-  if type(pipeline) ~= "table" or (type(pipeline) == "table" and u.table_size(pipeline) == 0) then
-    u.notify("Pipeline not found", vim.log.levels.WARN)
-    return
+local function get_latest_pipelines(count)
+  count = count or 1 -- Default to 1 if count is not provided
+  local pipelines = {}
+
+  if not state.PIPELINE then
+    u.notify("Pipeline state is not initialized", vim.log.levels.WARN)
+    return nil
   end
-  return pipeline
+
+  for i = 1, math.max(count, #state.PIPELINE) do
+    local pipeline = state.PIPELINE[i].latest_pipeline
+    if type(pipeline) == "table" and u.table_size(pipeline) > 0 then
+      table.insert(pipelines, pipeline)
+    end
+  end
+
+  if #pipelines == 0 then
+    u.notify("No valid pipelines found", vim.log.levels.WARN)
+    return nil
+  end
+  return pipelines
 end
 
-local function get_pipeline_jobs()
-  M.latest_pipeline = get_latest_pipeline()
-  if not M.latest_pipeline then
-    return
-  end
-  return u.reverse(type(state.PIPELINE.jobs) == "table" and state.PIPELINE.jobs or {})
+local function get_pipeline_jobs(idx)
+  return u.reverse(type(state.PIPELINE[idx].jobs) == "table" and state.PIPELINE[idx].jobs or {})
 end
 
 -- The function will render the Pipeline state in a popup
 M.open = function()
-  M.pipeline_jobs = get_pipeline_jobs()
-  M.latest_pipeline = get_latest_pipeline()
-  if M.latest_pipeline == nil then
+  M.latest_pipelines = get_latest_pipelines()
+  if not M.latest_pipelines then
+    return
+  end
+  if not M.latest_pipelines or #M.latest_pipelines == 0 then
     return
   end
 
-  local width = string.len(M.latest_pipeline.web_url) + 10
-  local height = 6 + #M.pipeline_jobs + 3
+  local max_width = 0
+  local total_height = 0
+  local pipelines_data = {}
+
+  for idx, pipeline in ipairs(M.latest_pipelines) do
+    local width = string.len(pipeline.web_url) + 10
+    max_width = math.max(max_width, width)
+    local pipeline_jobs = get_pipeline_jobs(idx)
+    local pipeline_status = M.get_pipeline_status(idx, false)
+    local height = 6 + #pipeline_jobs + 3
+    total_height = total_height + height
+
+    table.insert(pipelines_data, {
+      pipeline = pipeline,
+      pipeline_status = pipeline_status,
+      jobs = pipeline_jobs,
+      width = width,
+      height = 6 + #pipeline_jobs + 3,
+      lines = {},
+    })
+  end
 
   local pipeline_popup =
-    Popup(popup.create_popup_state("Loading Pipeline...", state.settings.popup.pipeline, width, height, 60))
+    Popup(popup.create_popup_state("Loading Pipelines...", state.settings.popup.pipeline, max_width, total_height, 60))
   popup.set_up_autocommands(pipeline_popup, nil, vim.api.nvim_get_current_win())
   M.pipeline_popup = pipeline_popup
   pipeline_popup:mount()
@@ -49,57 +80,79 @@ M.open = function()
   local bufnr = vim.api.nvim_get_current_buf()
   vim.opt_local.wrap = false
 
-  local lines = {}
-
   u.switch_can_edit_buf(bufnr, true)
-  table.insert(lines, "Status: " .. M.get_pipeline_status(false))
-  table.insert(lines, "")
-  table.insert(lines, string.format("Last Run: %s", u.time_since(M.latest_pipeline.created_at)))
-  table.insert(lines, string.format("Url: %s", M.latest_pipeline.web_url))
-  table.insert(lines, string.format("Triggered By: %s", M.latest_pipeline.source))
 
-  table.insert(lines, "")
-  table.insert(lines, "Jobs:")
+  local all_lines = {}
+  for i, data in ipairs(pipelines_data) do
+    local pipeline = data.pipeline
+    local lines = data.lines
 
-  local longest_title = u.get_longest_string(u.map(M.pipeline_jobs, function(v)
-    return v.name
-  end))
+    table.insert(lines, data.pipeline_status)
+    table.insert(lines, "")
+    table.insert(lines, string.format("Last Run: %s", u.time_since(pipeline.created_at)))
+    table.insert(lines, string.format("Url: %s", pipeline.web_url))
+    table.insert(lines, string.format("Triggered By: %s", pipeline.source))
+    table.insert(lines, "")
+    table.insert(lines, "Jobs:")
 
-  local function row_offset(name)
-    local offset = longest_title - string.len(name)
-    local res = string.rep(" ", offset + 5)
-    return res
-  end
+    local longest_title = u.get_longest_string(u.map(data.jobs, function(v)
+      return v.name
+    end))
 
-  for _, pipeline_job in ipairs(M.pipeline_jobs) do
-    local offset = row_offset(pipeline_job.name)
-    local row = string.format(
-      "%s%s %s (%s)",
-      pipeline_job.name,
-      offset,
-      state.settings.pipeline[pipeline_job.status] or "*",
-      pipeline_job.status or ""
-    )
+    local function row_offset(name)
+      local offset = longest_title - string.len(name)
+      local res = string.rep(" ", offset + 5)
+      return res
+    end
 
-    table.insert(lines, row)
+    for _, pipeline_job in ipairs(data.jobs) do
+      local offset = row_offset(pipeline_job.name)
+      local row = string.format(
+        "%s%s %s (%s)",
+        pipeline_job.name,
+        offset,
+        state.settings.pipeline[pipeline_job.status] or "*",
+        pipeline_job.status or ""
+      )
+      table.insert(lines, row)
+    end
+
+    -- Add separator between pipelines
+    if i < #pipelines_data then
+      table.insert(lines, "")
+      table.insert(lines, string.rep("-", max_width))
+      table.insert(lines, "")
+    end
+
+    for _, line in ipairs(lines) do
+      table.insert(all_lines, line)
+    end
   end
 
   vim.schedule(function()
-    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
-    M.color_status(M.latest_pipeline.status, bufnr, lines[1], 1)
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, all_lines)
 
-    for i, pipeline_job in ipairs(M.pipeline_jobs) do
-      M.color_status(pipeline_job.status, bufnr, lines[7 + i], 7 + i)
+    local line_offset = 0
+    for _, data in ipairs(pipelines_data) do
+      local pipeline = data.pipeline
+      local lines = data.lines
+
+      M.color_status(pipeline.status, bufnr, all_lines[line_offset + 1], line_offset + 1)
+
+      for j, pipeline_job in ipairs(data.jobs) do
+        M.color_status(pipeline_job.status, bufnr, all_lines[line_offset + 7 + j], line_offset + 7 + j)
+      end
+
+      line_offset = line_offset + #lines
     end
 
-    pipeline_popup.border:set_text("top", "Pipeline Status", "center")
+    pipeline_popup.border:set_text("top", "Pipelines Status", "center")
     popup.set_popup_keymaps(pipeline_popup, M.retrigger, M.see_logs)
     u.switch_can_edit_buf(bufnr, false)
   end)
 end
-
 M.retrigger = function()
-  M.latest_pipeline = get_latest_pipeline()
+  M.latest_pipeline = get_latest_pipelines()
   if not M.latest_pipeline then
     return
   end
@@ -173,12 +226,8 @@ end
 ---colorize the pipeline icon.
 ---@param wrap_with_color boolean
 ---@return string
-M.get_pipeline_icon = function(wrap_with_color)
-  M.latest_pipeline = get_latest_pipeline()
-  if not M.latest_pipeline then
-    return ""
-  end
-  local symbol = state.settings.pipeline[M.latest_pipeline.status]
+M.get_pipeline_icon = function(idx, wrap_with_color)
+  local symbol = state.settings.pipeline[state.PIPELINE[idx].latest_pipeline.status]
   if not wrap_with_color then
     return symbol
   end
@@ -196,12 +245,13 @@ end
 ---colorize the pipeline icon.
 ---@param wrap_with_color boolean
 ---@return string
-M.get_pipeline_status = function(wrap_with_color)
-  M.latest_pipeline = get_latest_pipeline()
-  if not M.latest_pipeline then
-    return ""
-  end
-  return string.format("%s (%s)", M.get_pipeline_icon(wrap_with_color), M.latest_pipeline.status)
+M.get_pipeline_status = function(idx, wrap_with_color)
+  return string.format(
+    "[%s]: Status: %s (%s)",
+    state.PIPELINE[idx].name,
+    M.get_pipeline_icon(idx, wrap_with_color),
+    state.PIPELINE[idx].latest_pipeline.status
+  )
 end
 
 M.color_status = function(status, bufnr, status_line, linnr)

@@ -27,6 +27,14 @@ func (f fakePipelineManager) ListPipelineJobs(pid interface{}, pipelineID int, o
 	return []*gitlab.Job{}, resp, err
 }
 
+func (f fakePipelineManager) ListPipelineBridges(pid interface{}, pipelineID int, opts *gitlab.ListJobsOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.Bridge, *gitlab.Response, error) {
+	resp, err := f.handleGitlabError()
+	if err != nil {
+		return nil, nil, err
+	}
+	return []*gitlab.Bridge{}, resp, err
+}
+
 func (f fakePipelineManager) RetryPipelineBuild(pid interface{}, pipeline int, options ...gitlab.RequestOptionFunc) (*gitlab.Pipeline, *gitlab.Response, error) {
 	resp, err := f.handleGitlabError()
 	if err != nil {

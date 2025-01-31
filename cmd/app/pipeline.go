@@ -20,16 +20,18 @@ type RetriggerPipelineResponse struct {
 type PipelineWithJobs struct {
 	Jobs           []*gitlab.Job        `json:"jobs"`
 	LatestPipeline *gitlab.PipelineInfo `json:"latest_pipeline"`
+	Name           string               `json:"name"`
 }
 
 type GetPipelineAndJobsResponse struct {
 	SuccessResponse
-	Pipeline PipelineWithJobs `json:"latest_pipeline"`
+	Pipelines []PipelineWithJobs `json:"latest_pipeline"`
 }
 
 type PipelineManager interface {
 	ListProjectPipelines(pid interface{}, opt *gitlab.ListProjectPipelinesOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.PipelineInfo, *gitlab.Response, error)
 	ListPipelineJobs(pid interface{}, pipelineID int, opts *gitlab.ListJobsOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.Job, *gitlab.Response, error)
+	ListPipelineBridges(pid interface{}, pipelineID int, opts *gitlab.ListJobsOptions, options ...gitlab.RequestOptionFunc) ([]*gitlab.Bridge, *gitlab.Response, error)
 	RetryPipelineBuild(pid interface{}, pipeline int, options ...gitlab.RequestOptionFunc) (*gitlab.Pipeline, *gitlab.Response, error)
 }
 
@@ -101,7 +103,6 @@ func (a pipelineService) GetPipelineAndJobs(w http.ResponseWriter, r *http.Reque
 	}
 
 	jobs, res, err := a.client.ListPipelineJobs(a.projectInfo.ProjectId, pipeline.ID, &gitlab.ListJobsOptions{})
-
 	if err != nil {
 		handleError(w, err, "Could not get pipeline jobs", http.StatusInternalServerError)
 		return
@@ -112,13 +113,51 @@ func (a pipelineService) GetPipelineAndJobs(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	pipelines := []PipelineWithJobs{}
+	pipelines = append(pipelines, PipelineWithJobs{
+		Jobs:           jobs,
+		LatestPipeline: pipeline,
+		Name:           "root",
+	})
+
+	bridges, res, err := a.client.ListPipelineBridges(a.projectInfo.ProjectId, pipeline.ID, &gitlab.ListJobsOptions{})
+
+	if err != nil {
+		handleError(w, err, "Could not get pipeline trigger jobs", http.StatusInternalServerError)
+		return
+	}
+	if res.StatusCode >= 300 {
+		handleError(w, GenericError{r.URL.Path}, "Could not get pipeline trigger jobs", res.StatusCode)
+		return
+	}
+
+	for _, bridge := range bridges {
+		if bridge.DownstreamPipeline == nil {
+			continue
+		}
+
+		pipelineIdInBridge := bridge.DownstreamPipeline.ID
+		bridgePipelineJobs, res, err := a.client.ListPipelineJobs(bridge.DownstreamPipeline.ProjectID, pipelineIdInBridge, &gitlab.ListJobsOptions{})
+		if err != nil {
+			handleError(w, err, "Could not get jobs for a pipeline from a trigger job", http.StatusInternalServerError)
+			return
+		}
+		if res.StatusCode >= 300 {
+			handleError(w, GenericError{r.URL.Path}, "Could not get jobs for a pipeline from a trigger job", res.StatusCode)
+			return
+		}
+
+		pipelines = append(pipelines, PipelineWithJobs{
+			Jobs:           bridgePipelineJobs,
+			LatestPipeline: bridge.DownstreamPipeline,
+			Name:           bridge.Name,
+		})
+	}
+
 	w.WriteHeader(http.StatusOK)
 	response := GetPipelineAndJobsResponse{
 		SuccessResponse: SuccessResponse{Message: "Pipeline retrieved"},
-		Pipeline: PipelineWithJobs{
-			LatestPipeline: pipeline,
-			Jobs:           jobs,
-		},
+		Pipelines:       pipelines,
 	}
 
 	err = json.NewEncoder(w).Encode(response)
