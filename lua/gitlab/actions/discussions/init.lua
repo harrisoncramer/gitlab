@@ -15,7 +15,6 @@ local List = require("gitlab.utils.list")
 local tree_utils = require("gitlab.actions.discussions.tree")
 local discussions_tree = require("gitlab.actions.discussions.tree")
 local draft_notes = require("gitlab.actions.draft_notes")
-local diffview_lib = require("diffview.lib")
 local signs = require("gitlab.indicators.signs")
 local diagnostics = require("gitlab.indicators.diagnostics")
 local winbar = require("gitlab.actions.discussions.winbar")
@@ -74,34 +73,21 @@ end
 M.initialize_discussions = function()
   state.discussion_tree.last_updated = os.time()
   signs.setup_signs()
-  reviewer.set_callback_for_file_changed(function()
-    M.refresh_diagnostics()
-    M.modifiable(false)
-    reviewer.set_reviewer_keymaps()
+  reviewer.set_callback_for_file_changed(function(args)
+    reviewer.update_winid_for_buffer(args.buf)
   end)
   reviewer.set_callback_for_reviewer_enter(function()
-    M.modifiable(false)
+    M.refresh_diagnostics()
+  end)
+  reviewer.set_callback_for_buf_read(function(args)
+    vim.api.nvim_buf_set_option(args.buf, "modifiable", false)
+    reviewer.set_keymaps(args.buf)
+    reviewer.set_reviewer_autocommands(args.buf)
   end)
   reviewer.set_callback_for_reviewer_leave(function()
     signs.clear_signs()
     diagnostics.clear_diagnostics()
-    M.modifiable(true)
-    reviewer.del_reviewer_keymaps()
   end)
-end
-
---- Ensures that the both buffers in the reviewer are/not modifiable. Relevant if the user is using
---- the --imply-local setting
-M.modifiable = function(bool)
-  local view = diffview_lib.get_current_view()
-  local a = view.cur_layout.a.file.bufnr
-  local b = view.cur_layout.b.file.bufnr
-  if a ~= nil and vim.api.nvim_buf_is_loaded(a) then
-    vim.api.nvim_buf_set_option(a, "modifiable", bool)
-  end
-  if b ~= nil and vim.api.nvim_buf_is_loaded(b) then
-    vim.api.nvim_buf_set_option(b, "modifiable", bool)
-  end
 end
 
 --- Take existing data and refresh the diagnostics, the winbar, and the signs

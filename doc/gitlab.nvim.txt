@@ -302,6 +302,7 @@ you call this function with no values the defaults will be used:
           "delete_branch",
           "squash",
           "labels",
+          "web_url",
         },
       },
       discussion_signs = {

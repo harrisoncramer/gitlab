@@ -139,7 +139,7 @@ M.check = function(return_results)
   end
 
   if return_results then
-    return #warnings + #errors == 0
+    return #errors == 0
   end
 end
 

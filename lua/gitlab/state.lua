@@ -208,6 +208,7 @@ M.settings = {
       "delete_branch",
       "squash",
       "labels",
+      "web_url",
     },
   },
   discussion_signs = {

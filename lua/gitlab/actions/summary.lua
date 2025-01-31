@@ -139,6 +139,7 @@ M.build_info_lines = function()
         return pipeline.status
       end,
     },
+    web_url = { title = "MR URL", content = info.web_url },
   }
 
   local longest_used = ""
