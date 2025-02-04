@@ -316,6 +316,7 @@ you call this function with no values the defaults will be used:
           comment = "→|",
           range = " |",
         },
+        skip_old_revision_discussion = false, -- Don't show diagnostics for discussions that were created for earlier MR revisions
       },
       pipeline = {
         created = "",

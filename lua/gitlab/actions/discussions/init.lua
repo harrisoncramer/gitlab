@@ -74,6 +74,7 @@ M.initialize_discussions = function()
   state.discussion_tree.last_updated = os.time()
   signs.setup_signs()
   reviewer.set_callback_for_file_changed(function(args)
+    diagnostics.place_diagnostics(args.buf)
     reviewer.update_winid_for_buffer(args.buf)
   end)
   reviewer.set_callback_for_reviewer_enter(function()
@@ -90,7 +91,7 @@ M.initialize_discussions = function()
   end)
 end
 
---- Take existing data and refresh the diagnostics, the winbar, and the signs
+--- Take existing data and refresh the diagnostics and the signs
 M.refresh_diagnostics = function()
   if state.settings.discussion_signs.enabled then
     diagnostics.refresh_diagnostics()
@@ -573,7 +574,7 @@ M.set_tree_keymaps = function(tree, bufnr, unlinked)
     if keymaps.discussion_tree.jump_to_reviewer then
       vim.keymap.set("n", keymaps.discussion_tree.jump_to_reviewer, function()
         if M.is_current_node_note(tree) then
-          common.jump_to_reviewer(tree, M.refresh_diagnostics)
+          common.jump_to_reviewer(tree)
         end
       end, { buffer = bufnr, desc = "Jump to reviewer", nowait = keymaps.discussion_tree.jump_to_reviewer_nowait })
     end
@@ -740,6 +741,16 @@ M.set_tree_keymaps = function(tree, bufnr, unlinked)
       buffer = bufnr,
       desc = "Copy the URL of the current node to clipboard",
       nowait = keymaps.discussion_tree.copy_node_url_nowait,
+    })
+  end
+
+  if keymaps.discussion_tree.print_node then
+    vim.keymap.set("n", keymaps.discussion_tree.print_node, function()
+      common.print_node(tree)
+    end, {
+      buffer = bufnr,
+      desc = "Print current node (for debugging)",
+      nowait = keymaps.discussion_tree.print_node_nowait,
     })
   end
 

@@ -346,3 +346,15 @@
 ---@field perform_action? string -- Once in normal mode, does action (like saving comment or applying description edit, etc)
 ---@field perform_linewise_action? string -- Once in normal mode, does the linewise action (see logs for this job, etc)
 ---@field discard_changes? string -- Quit the popup discarding changes, the popup content is not? saved to the `temp_registers` (see `:h gitlab.nvim.temp-registers`)
+
+---@class List The base class for all list objects
+---@field new function -- Creates a new List from a table
+---@field map function -- Mutates a given list
+---@field filter function -- Filters a given list
+---@field partition function -- Partitions a given list into two lists
+---@field reduce function -- Applies a function to reduce the list to a single value
+---@field sort function -- Sorts the list in place based on a comparator function
+---@field find function -- Returns the first element that satisfies the callback
+---@field slice function -- Returns a portion of the list between start and end indices
+---@field includes function -- Returns true if any of the elements can satisfy the callback
+---@field values function -- Returns an iterator over the list's values

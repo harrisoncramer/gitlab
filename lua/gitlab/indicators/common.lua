@@ -1,6 +1,5 @@
 local u = require("gitlab.utils")
 local state = require("gitlab.state")
-local reviewer = require("gitlab.reviewer")
 local List = require("gitlab.utils.list")
 
 local M = {}
@@ -11,24 +10,25 @@ local M = {}
 ---@field resolved boolean|nil
 ---@field created_at string|nil
 
+---Return true if discussion has a placeable diagnostic, false otherwise.
 ---@param note NoteWithValues
 ---@param file string
 ---@return boolean
-local filter_discussions_and_notes = function(note, file)
+local filter_discussions_and_notes = function(note)
   ---Do not include unlinked notes
   return note.position ~= nil
-    and (note.position.new_path == file or note.position.old_path == file)
     ---Skip resolved discussions if user wants to
     and not (state.settings.discussion_signs.skip_resolved_discussion and note.resolvable and note.resolved)
     ---Skip discussions from old revisions
     and not (
       state.settings.discussion_signs.skip_old_revision_discussion
+      and note.created_at ~= nil
       and u.from_iso_format_date_to_timestamp(note.created_at)
         <= u.from_iso_format_date_to_timestamp(state.MR_REVISIONS[1].created_at)
     )
 end
 
----Filter all discussions which are relevant for currently visible signs and diagnostics.
+---Filter all discussions and drafts which have placeable signs and diagnostics.
 ---@return Discussion|DraftNote[]
 M.filter_placeable_discussions = function()
   local discussions = u.ensure_table(state.DISCUSSION_DATA and state.DISCUSSION_DATA.discussions or {})
@@ -41,18 +41,13 @@ M.filter_placeable_discussions = function()
     draft_notes = {}
   end
 
-  local file = reviewer.get_current_file_path()
-  if not file then
-    return {}
-  end
-
   local filtered_discussions = List.new(discussions):filter(function(discussion)
     local first_note = discussion.notes[1]
-    return type(first_note.position) == "table" and filter_discussions_and_notes(first_note, file)
+    return type(first_note.position) == "table" and filter_discussions_and_notes(first_note)
   end)
 
   local filtered_draft_notes = List.new(draft_notes):filter(function(note)
-    return filter_discussions_and_notes(note, file)
+    return filter_discussions_and_notes(note)
   end)
 
   return u.join(filtered_discussions, filtered_draft_notes)

@@ -85,47 +85,64 @@ local create_multiline_diagnostic = function(d_or_n)
   }, d_or_n)
 end
 
----Set diagnostics in currently new SHA.
+---Set diagnostics in the given buffer.
 ---@param namespace number namespace for diagnostics
+---@param bufnr number the bufnr for placing the diagnostics
 ---@param diagnostics table see :h vim.diagnostic.set
 ---@param opts table? see :h vim.diagnostic.set
-local set_diagnostics_in_new_sha = function(namespace, diagnostics, opts)
-  local view = diffview_lib.get_current_view()
-  if not view then
-    return
-  end
-  vim.diagnostic.set(namespace, view.cur_layout.b.file.bufnr, diagnostics, opts)
-  require("gitlab.indicators.signs").set_signs(diagnostics, view.cur_layout.b.file.bufnr)
+local set_diagnostics = function(namespace, bufnr, diagnostics, opts)
+  vim.diagnostic.set(namespace, bufnr, diagnostics, opts)
+  require("gitlab.indicators.signs").set_signs(diagnostics, bufnr)
 end
 
----Set diagnostics in old SHA.
----@param namespace number namespace for diagnostics
----@param diagnostics table see :h vim.diagnostic.set
----@param opts table? see :h vim.diagnostic.set
-local set_diagnostics_in_old_sha = function(namespace, diagnostics, opts)
-  local view = diffview_lib.get_current_view()
-  if not view then
-    return
-  end
-  vim.diagnostic.set(namespace, view.cur_layout.a.file.bufnr, diagnostics, opts)
-  require("gitlab.indicators.signs").set_signs(diagnostics, view.cur_layout.a.file.bufnr)
-end
-
----Refresh the diagnostics for the currently reviewed file
+---Refresh the diagnostics for all the reviewed files, and place diagnostics for the currently
+---visible buffers.
 M.refresh_diagnostics = function()
+  require("gitlab.indicators.signs").clear_signs()
+  M.clear_diagnostics()
+  M.placeable_discussions = indicators_common.filter_placeable_discussions()
+
+  local view = diffview_lib.get_current_view()
+  if view == nil then
+    u.notify("Could not find Diffview view", vim.log.levels.ERROR)
+    return
+  end
+  M.place_diagnostics(view.cur_layout.a.file.bufnr)
+  M.place_diagnostics(view.cur_layout.b.file.bufnr)
+end
+
+---Filter and place the diagnostics for the given buffer.
+---@param bufnr number The number of the buffer for placing diagnostics.
+M.place_diagnostics = function(bufnr)
+  if not state.settings.discussion_signs.enabled then
+    return
+  end
+  local view = diffview_lib.get_current_view()
+  if view == nil then
+    u.notify("Could not find Diffview view", vim.log.levels.ERROR)
+    return
+  end
+
   local ok, err = pcall(function()
-    require("gitlab.indicators.signs").clear_signs()
-    M.clear_diagnostics()
-    local filtered_discussions = indicators_common.filter_placeable_discussions()
-    if filtered_discussions == nil then
+    local file_discussions = List.new(M.placeable_discussions):filter(function(discussion_or_note)
+      local note = discussion_or_note.notes and discussion_or_note.notes[1] or discussion_or_note
+      -- Surprisingly, the following line works even if I'd expect it should match new/old paths
+      -- with a/b buffers the other way round!
+      return note.position.new_path == view.cur_layout.a.file.path
+        or note.position.old_path == view.cur_layout.b.file.path
+    end)
+
+    if #file_discussions == 0 then
       return
     end
 
-    local new_diagnostics = M.parse_new_diagnostics(filtered_discussions)
-    set_diagnostics_in_new_sha(diagnostics_namespace, new_diagnostics, create_display_opts())
+    local new_diagnostics, old_diagnostics = List.new(file_discussions):partition(indicators_common.is_new_sha)
 
-    local old_diagnostics = M.parse_old_diagnostics(filtered_discussions)
-    set_diagnostics_in_old_sha(diagnostics_namespace, old_diagnostics, create_display_opts())
+    if bufnr == view.cur_layout.a.file.bufnr then
+      set_diagnostics(diagnostics_namespace, bufnr, M.parse_diagnostics(old_diagnostics), create_display_opts())
+    elseif bufnr == view.cur_layout.b.file.bufnr then
+      set_diagnostics(diagnostics_namespace, bufnr, M.parse_diagnostics(new_diagnostics), create_display_opts())
+    end
   end)
 
   if not ok then
@@ -134,24 +151,13 @@ M.refresh_diagnostics = function()
 end
 
 ---Iterates over each discussion and returns a list of tables with sign
----data, for instance group, priority, line number etc for the new SHA
----@param discussions Discussion[]
+---data, for instance group, priority, line number etc
+---@param discussions List
 ---@return DiagnosticTable[]
-M.parse_new_diagnostics = function(discussions)
-  local new_diagnostics = List.new(discussions):filter(indicators_common.is_new_sha)
-  local single_line = new_diagnostics:filter(indicators_common.is_single_line):map(create_single_line_diagnostic)
-  local multi_line = new_diagnostics:filter(indicators_common.is_multi_line):map(create_multiline_diagnostic)
-  return u.combine(single_line, multi_line)
-end
-
----Iterates over each discussion and returns a list of tables with sign
----data, for instance group, priority, line number etc for the old SHA
----@param discussions Discussion[]
----@return DiagnosticTable[]
-M.parse_old_diagnostics = function(discussions)
-  local old_diagnostics = List.new(discussions):filter(indicators_common.is_old_sha)
-  local single_line = old_diagnostics:filter(indicators_common.is_single_line):map(create_single_line_diagnostic)
-  local multi_line = old_diagnostics:filter(indicators_common.is_multi_line):map(create_multiline_diagnostic)
+M.parse_diagnostics = function(discussions)
+  local single_line, multi_line = discussions:partition(indicators_common.is_single_line)
+  single_line = single_line:map(create_single_line_diagnostic)
+  multi_line = multi_line:map(create_multiline_diagnostic)
   return u.combine(single_line, multi_line)
 end
 
